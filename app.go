@@ -18,11 +18,6 @@ type DiskTree struct {
 	Children []any  `json:"children"`
 }
 
-type DiskTreeResult struct {
-	Tree   *DiskTree
-	Status string
-}
-
 type DirNode struct {
 	Children []any  `json:"children"`
 	Name     string `json:"name"`
@@ -77,7 +72,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) DiskTreeMapStatistics(path string) DiskTree {
-	pool, _ := ants.NewPool(10000)
+	pool, _ := ants.NewPool(1000)
 	defer pool.Release()
 	start := time.Now()
 	var rootDir string
@@ -89,7 +84,7 @@ func (a *App) DiskTreeMapStatistics(path string) DiskTree {
 	d, _ := disk.Usage(rootDir)
 	diskTree := DiskTree{Name: rootDir}
 	diskTree.Children = make([]any, 0, 30)
-	diskTree.Children = append(diskTree.Children, Node{Name: "Free", Value: int(d.Free)})
+	diskTree.Children = append(diskTree.Children, Node{Name: "可用空间", Value: int(d.Free)})
 	paths, _ := os.ReadDir(rootDir)
 	var (
 		loopWg sync.WaitGroup
