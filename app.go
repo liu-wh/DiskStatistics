@@ -13,6 +13,10 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 )
 
+var (
+	RootPath string
+)
+
 type DiskTree struct {
 	Name     string `json:"name"`
 	Children []any  `json:"children"`
@@ -29,11 +33,13 @@ type Node struct {
 }
 
 func scanDirTwo(path string, wait *sync.WaitGroup, node *DirNode, pool *ants.Pool) {
+	//读取目录下的文件信息
 	dirAry, err := os.ReadDir(path)
 	if err != nil {
 		return
 	}
 	for _, e := range dirAry {
+		//是目录 递归调用,并且创建一个硬盘树节点
 		if e.IsDir() {
 			wait.Add(1)
 			childNode := &DirNode{Name: e.Name(), Children: make([]any, 0, 100)}
@@ -44,6 +50,7 @@ func scanDirTwo(path string, wait *sync.WaitGroup, node *DirNode, pool *ants.Poo
 					wait.Done()
 				})
 		} else {
+			//是文件, 存入到硬盘树节点
 			info, err := e.Info()
 			if err != nil {
 				continue
@@ -71,26 +78,28 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-func (a *App) DiskTreeMapStatistics(path string) DiskTree {
+func (a *App) DiskTreeMapStatistics() DiskTree {
+
+	//初始化线程池
 	pool, _ := ants.NewPool(1000)
 	defer pool.Release()
 	start := time.Now()
-	var rootDir string
-	if path == "root" {
-		rootDir = "C:/"
-	} else {
-		rootDir = path
-	}
-	d, _ := disk.Usage(rootDir)
-	diskTree := DiskTree{Name: rootDir}
-	diskTree.Children = make([]any, 0, 30)
+
+	//初始化一颗硬盘树
+	diskTree := DiskTree{Name: RootPath}
+	paths, _ := os.ReadDir(RootPath)
+	diskTree.Children = make([]any, 0, len(paths))
+
+	//获取根目录的剩余空间
+	d, _ := disk.Usage(RootPath)
 	diskTree.Children = append(diskTree.Children, Node{Name: "可用空间", Value: int(d.Free)})
-	paths, _ := os.ReadDir(rootDir)
 	var (
 		loopWg sync.WaitGroup
 		info   os.FileInfo
 		err    error
 	)
+
+	//开始扫描根目录下的目录
 	for _, p := range paths {
 		var wait sync.WaitGroup
 		loopWg.Add(1)
@@ -98,14 +107,16 @@ func (a *App) DiskTreeMapStatistics(path string) DiskTree {
 		if info, err = p.Info(); err != nil {
 			continue
 		}
+		//如果是目录, 使用另外一个函数开始扫描
 		if p.IsDir() {
 			node := &DirNode{Name: p.Name(), Children: make([]any, 0, 50)}
 			diskTree.Children = append(diskTree.Children, node)
 			_ = pool.Submit(func() {
-				scanDirTwo(filepath.Join(rootDir, p.Name()), &wait, node, pool)
+				scanDirTwo(filepath.Join(RootPath, p.Name()), &wait, node, pool)
 				wait.Done()
 			})
 		} else {
+			//不是目录的话, 把文件信息存到硬盘树
 			wait.Done()
 			node := &Node{Name: p.Name(), Value: int(info.Size())}
 			diskTree.Children = append(diskTree.Children, node)
@@ -118,7 +129,8 @@ func (a *App) DiskTreeMapStatistics(path string) DiskTree {
 	return diskTree
 }
 
-func (a *App) StartSan(path string) DiskTree {
-	return a.DiskTreeMapStatistics(path)
+// StartSan 前端点击扫描, 就会调用这个函数
+func (a *App) StartSan() DiskTree {
+	return a.DiskTreeMapStatistics()
 
 }

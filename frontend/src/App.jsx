@@ -23,7 +23,7 @@ function App() {
             duration: 0,
             key: "loading",
         })
-        DiskTreeMapStatistics("root").then(
+        DiskTreeMapStatistics().then(
             (data) =>{
                 if (lock) {
                     return
